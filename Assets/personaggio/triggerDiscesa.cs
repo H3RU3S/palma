@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 public class TriggerCancelliDown : MonoBehaviour
 {
@@ -7,14 +8,15 @@ public class TriggerCancelliDown : MonoBehaviour
     public Transform cancelloDavanti;
 
     [Header("Folla - Ricerca Automatica")]
-    [Tooltip("Tag degli sprite della folla (lascia vuoto per cercare tutti i CrowdPerson)")]
-    public string crowdTag = "Crowd"; // Opzionale: usa un tag per filtrare
-    public bool findAllCrowdPeople = true; // Cerca automaticamente tutti i CrowdPerson
+    [Tooltip("Tag degli sprite della folla (lascia vuoto per cercare tutti)")]
+    public string crowdTag = "Crowd";
+    public bool findAllCrowdPeople = true;
+    public bool rotateAllSprites = true;
     
     [Header("Attivazione Randomica")]
     [Range(0f, 1f)]
     [Tooltip("Percentuale di sprite da attivare (0.5 = 50%, 1.0 = 100%)")]
-    public float activationPercentage = 0.7f; // 70% degli sprite si attivano
+    public float activationPercentage = 0.7f;
 
     [Header("Velocità movimento")]
     public float retroSpeed = 2f;
@@ -23,18 +25,18 @@ public class TriggerCancelliDown : MonoBehaviour
     public float retroTargetY = -0.8f;
 
     [Header("Rotazione folla verso origine")]
-    public Vector3 targetPosition = Vector3.zero; // Punto verso cui guardare (0, 0, 0)
-    public float rotationSpeed = 5f; // Velocità di rotazione
+    public Vector3 targetPosition = Vector3.zero;
+    public float rotationSpeed = 5f;
 
     [Header("Opzioni Rigidbody")]
     public bool forceMakeKinematic = true;
 
     private bool attivato = false;
     private bool davantiEliminato = false;
-
     private Rigidbody retroRb;
     private Vector3 retroTargetPos;
     private CrowdPerson[] allCrowdPeople;
+    private SpriteRotator[] allSpriteRotators;
 
     private void Start()
     {
@@ -44,11 +46,32 @@ public class TriggerCancelliDown : MonoBehaviour
             retroRb = cancelloRetro.GetComponent<Rigidbody>();
         }
 
-        // Trova automaticamente tutti i CrowdPerson nella scena
         if (findAllCrowdPeople)
         {
             allCrowdPeople = FindObjectsOfType<CrowdPerson>();
             Debug.Log($"[TriggerCancelliDown] Trovati {allCrowdPeople.Length} CrowdPerson nella scena");
+        }
+
+        if (rotateAllSprites)
+        {
+            SpriteRenderer[] allSprites = FindObjectsOfType<SpriteRenderer>();
+            List<SpriteRotator> rotatorList = new List<SpriteRotator>();
+
+            foreach (SpriteRenderer sr in allSprites)
+            {
+                if (sr.GetComponent<CrowdPerson>() != null) continue;
+                if (!string.IsNullOrEmpty(crowdTag) && !sr.CompareTag(crowdTag)) continue;
+
+                SpriteRotator rotator = sr.GetComponent<SpriteRotator>();
+                if (rotator == null)
+                {
+                    rotator = sr.gameObject.AddComponent<SpriteRotator>();
+                }
+                rotatorList.Add(rotator);
+            }
+
+            allSpriteRotators = rotatorList.ToArray();
+            Debug.Log($"[TriggerCancelliDown] Trovati {allSpriteRotators.Length} sprite senza CrowdPerson");
         }
     }
 
@@ -58,17 +81,15 @@ public class TriggerCancelliDown : MonoBehaviour
         {
             attivato = true;
 
-            // --- ATTIVA LA FOLLA RANDOMICAMENTE ---
             ActivateRandomCrowd();
+            RotateAllSprites();
 
-            // Distruggi cancelloDavanti
             if (!davantiEliminato && cancelloDavanti != null)
             {
                 Destroy(cancelloDavanti.gameObject);
                 davantiEliminato = true;
             }
 
-            // Preparazione Rigidbody del cancello retro
             if (retroRb != null)
             {
                 retroRb.linearVelocity = Vector3.zero;
@@ -94,25 +115,41 @@ public class TriggerCancelliDown : MonoBehaviour
         {
             if (person == null) continue;
 
-            // Randomizza se questo sprite si attiva o no
             float randomValue = Random.Range(0f, 1f);
             
             if (randomValue <= activationPercentage)
             {
-                // Attiva lo sprite
                 person.Attiva();
-                
-                // Imposta il target di rotazione
                 person.SetRotationTarget(targetPosition, rotationSpeed);
-                
-                // Randomizza l'offset del salto per variare l'animazione
                 person.SetRandomJumpOffset();
-                
                 activatedCount++;
             }
         }
 
         Debug.Log($"[TriggerCancelliDown] Attivati {activatedCount}/{allCrowdPeople.Length} sprite della folla ({(activationPercentage * 100f):F0}%)");
+    }
+
+    private void RotateAllSprites()
+    {
+        if (!rotateAllSprites || allSpriteRotators == null || allSpriteRotators.Length == 0)
+            return;
+
+        int rotatedCount = 0;
+
+        foreach (SpriteRotator rotator in allSpriteRotators)
+        {
+            if (rotator == null) continue;
+
+            float randomValue = Random.Range(0f, 1f);
+
+            if (randomValue <= activationPercentage)
+            {
+                rotator.SetRotationTarget(targetPosition, rotationSpeed);
+                rotatedCount++;
+            }
+        }
+
+        Debug.Log($"[TriggerCancelliDown] Ruotati {rotatedCount}/{allSpriteRotators.Length} sprite statici");
     }
 
     private void Update()
@@ -138,7 +175,6 @@ public class TriggerCancelliDown : MonoBehaviour
         retroRb.MovePosition(next);
     }
 
-    // Metodo per attivare manualmente tutti gli sprite (per test)
     [ContextMenu("Attiva Tutta La Folla")]
     public void ActivateAllCrowd()
     {
